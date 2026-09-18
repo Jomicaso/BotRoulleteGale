@@ -1,0 +1,100 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { createHash, timingSafeEqual } from "crypto";
+import { telegramCall } from "@/lib/roulette";
+
+function expectedSecret() {
+  const explicitSecret = process.env["TELEGRAM_WEBHOOK_SECRET"];
+  if (explicitSecret) return explicitSecret;
+
+  const tokenOrKey = process.env["TELEGRAM_BOT_TOKEN"] ?? process.env["TELEGRAM_API_KEY"];
+  if (!tokenOrKey) return null;
+  return createHash("sha256").update(`telegram-webhook:${tokenOrKey}`).digest("base64url");
+}
+
+function safeEqual(a: string, b: string) {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+export const Route = createFileRoute("/api/public/telegram/webhook")({
+  server: {
+    handlers: {
+      POST: async ({ request }) => {
+        const secret = expectedSecret();
+        if (!secret) return new Response("Not configured", { status: 500 });
+        const got = request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
+        if (!safeEqual(got, secret)) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+
+        type Chat = { id?: number; title?: string; username?: string; first_name?: string };
+        const update = (await request.json()) as {
+          update_id?: number;
+          message?: { chat?: Chat; text?: string };
+          channel_post?: { chat?: Chat; text?: string };
+          my_chat_member?: { chat?: Chat; new_chat_member?: { status?: string } };
+        };
+        const post = update.message ?? update.channel_post;
+        const membership = update.my_chat_member;
+        const chat = post?.chat ?? membership?.chat;
+        const chatId = chat?.id;
+        if (typeof update.update_id !== "number" || typeof chatId !== "number") {
+          return Response.json({ ok: true, ignored: true });
+        }
+
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+        const { error: dupError } = await supabaseAdmin
+          .from("telegram_updates")
+          .insert({ update_id: update.update_id });
+        if (dupError) return Response.json({ ok: true, duplicate: true });
+
+        const text = (post?.text ?? "").trim().toLowerCase();
+        const title = chat?.title ?? chat?.username ?? chat?.first_name ?? null;
+
+        // Bot added to / removed from a channel or group
+        if (membership) {
+          const status = membership.new_chat_member?.status ?? "";
+          const joined = status === "administrator" || status === "member" || status === "creator";
+          await supabaseAdmin
+            .from("telegram_subscribers")
+            .upsert({ chat_id: chatId, title, active: joined });
+          if (joined) {
+            try {
+              await telegramCall("sendMessage", {
+                chat_id: chatId,
+                text:
+                  "Avisos ligados aqui. Vai receber sinal quando saírem 2 números seguidos na mesma coluna.\n\n" +
+                  "Entrada: apostar nas outras duas colunas e cobrir o zero. Gale até 3x se repetir a mesma coluna.",
+              });
+            } catch (err) {
+              console.error("welcome failed", err);
+            }
+          }
+          return Response.json({ ok: true });
+        }
+
+        if (text.startsWith("/stop")) {
+          await supabaseAdmin.from("telegram_subscribers").upsert({ chat_id: chatId, title, active: false });
+          await telegramCall("sendMessage", { chat_id: chatId, text: "Avisos desligados. Envie /start para voltar a receber." });
+          return Response.json({ ok: true });
+        }
+
+        if (text && !text.startsWith("/start")) {
+          return Response.json({ ok: true, ignored: true });
+        }
+
+        await supabaseAdmin.from("telegram_subscribers").upsert({ chat_id: chatId, title, active: true });
+        await telegramCall("sendMessage", {
+          chat_id: chatId,
+          text:
+            "Avisos ligados! Vai receber sinal quando saírem 2 números seguidos na mesma coluna.\n\n" +
+            "Entrada: apostar nas outras duas colunas e cobrir o zero. Gale até 3x se repetir a mesma coluna.\n\n" +
+            "Envie /stop para desligar.",
+        });
+        return Response.json({ ok: true });
+      },
+    },
+  },
+});
