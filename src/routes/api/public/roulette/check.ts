@@ -405,7 +405,15 @@ async function executeMonitorCheck() {
     return Response.json({ ok: true, ...result });
   } catch (err) {
     console.error("check failed", err);
-    return Response.json({ ok: false, error: "roulette check failed" }, { status: 500 });
+    const message = err instanceof Error ? err.message : String(err);
+    const reason = message.includes("Missing Supabase environment variable")
+      ? "missing_supabase_environment"
+      : message.includes("claim roulette monitor lock")
+        ? "supabase_monitor_not_ready"
+        : message.includes("queued Telegram alerts")
+          ? "telegram_outbox_not_ready"
+          : "monitor_runtime_error";
+    return Response.json({ ok: false, error: "roulette check failed", reason }, { status: 500 });
   } finally {
     if (lockClaimed) await releaseMonitorLock(owner);
   }
