@@ -29,17 +29,32 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
         };
 
         let database: "ready" | "not_configured" | "schema_missing" | "unavailable" = "not_configured";
+        let databaseReason: "none" | "invalid_credentials" | "permission_denied" | "schema_missing" | "request_failed" = "none";
         if (configuration.supabaseUrl && configuration.supabaseServiceRole) {
           try {
             const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
             const { error } = await supabaseAdmin.from("telegram_subscribers").select("chat_id").limit(1);
-            database = error
-              ? error.code === "42P01" || error.code === "PGRST205"
-                ? "schema_missing"
-                : "unavailable"
-              : "ready";
+            if (!error) {
+              database = "ready";
+            } else {
+              const signature = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+              if (error.code === "42P01" || error.code === "PGRST205" || signature.includes("does not exist")) {
+                database = "schema_missing";
+                databaseReason = "schema_missing";
+              } else if (signature.includes("invalid api key") || signature.includes("jwt") || signature.includes("unauthorized")) {
+                database = "unavailable";
+                databaseReason = "invalid_credentials";
+              } else if (signature.includes("permission denied")) {
+                database = "unavailable";
+                databaseReason = "permission_denied";
+              } else {
+                database = "unavailable";
+                databaseReason = "request_failed";
+              }
+            }
           } catch {
             database = "unavailable";
+            databaseReason = "request_failed";
           }
         }
 
@@ -53,7 +68,13 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
           }
         }
 
-        return Response.json({ ok: database === "ready" && telegram === "ready", configuration, database, telegram });
+        return Response.json({
+          ok: database === "ready" && telegram === "ready",
+          configuration,
+          database,
+          databaseReason,
+          telegram,
+        });
       },
       POST: async ({ request }) => {
         const secret = expectedSecret();
