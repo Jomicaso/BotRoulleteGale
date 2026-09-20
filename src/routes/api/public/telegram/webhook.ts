@@ -20,6 +20,41 @@ function safeEqual(a: string, b: string) {
 export const Route = createFileRoute("/api/public/telegram/webhook")({
   server: {
     handlers: {
+      GET: async () => {
+        const configuration = {
+          supabaseUrl: Boolean(process.env["SUPABASE_URL"]),
+          supabaseServiceRole: Boolean(process.env["SUPABASE_SERVICE_ROLE_KEY"]),
+          telegramBotToken: Boolean(process.env["TELEGRAM_BOT_TOKEN"]),
+          telegramWebhookSecret: Boolean(process.env["TELEGRAM_WEBHOOK_SECRET"]),
+        };
+
+        let database: "ready" | "not_configured" | "schema_missing" | "unavailable" = "not_configured";
+        if (configuration.supabaseUrl && configuration.supabaseServiceRole) {
+          try {
+            const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+            const { error } = await supabaseAdmin.from("telegram_subscribers").select("chat_id").limit(1);
+            database = error
+              ? error.code === "42P01" || error.code === "PGRST205"
+                ? "schema_missing"
+                : "unavailable"
+              : "ready";
+          } catch {
+            database = "unavailable";
+          }
+        }
+
+        let telegram: "ready" | "not_configured" | "unavailable" = "not_configured";
+        if (configuration.telegramBotToken) {
+          try {
+            await telegramCall("getMe", {});
+            telegram = "ready";
+          } catch {
+            telegram = "unavailable";
+          }
+        }
+
+        return Response.json({ ok: database === "ready" && telegram === "ready", configuration, database, telegram });
+      },
       POST: async ({ request }) => {
         const secret = expectedSecret();
         if (!secret) return new Response("Not configured", { status: 500 });
