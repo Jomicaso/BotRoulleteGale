@@ -393,10 +393,12 @@ async function releaseMonitorLock(owner: string) {
 
 async function executeMonitorCheck() {
   const owner = crypto.randomUUID();
+  let lockClaimed = false;
   try {
     if (!(await claimMonitorLock(owner))) {
       return Response.json({ ok: true, status: "skipped_locked" });
     }
+    lockClaimed = true;
     await flushTelegramOutbox();
     const result = await runContinuous();
     await flushTelegramOutbox();
@@ -405,7 +407,7 @@ async function executeMonitorCheck() {
     console.error("check failed", err);
     return Response.json({ ok: false, error: "roulette check failed" }, { status: 500 });
   } finally {
-    await releaseMonitorLock(owner);
+    if (lockClaimed) await releaseMonitorLock(owner);
   }
 }
 
