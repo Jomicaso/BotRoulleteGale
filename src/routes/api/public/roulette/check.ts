@@ -2,7 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   columnOf,
   currentStreak,
+  entryFilterReason,
+  ENTRY_STREAK,
   fetchSpins,
+  MAX_GALES,
   RouletteRateLimitError,
   TelegramRateLimitError,
   telegramCall,
@@ -20,14 +23,11 @@ async function safeSim(fn: () => Promise<void>) {
 }
 
 const STATE_KEY = "roulette_state";
-
 const MISTBET_LINK = "https://msbt.io/5K9kF";
 const LEON_LINK = "https://9behi4y9oh.com/?serial=57437&amp;creative_id=453&amp;anid=";
 
 function affiliateLinks() {
-  return (
-    `\n💰 <a href="${MISTBET_LINK}">Mostbet</a>  |  💰 <a href="${LEON_LINK}">Leon</a>`
-  );
+  return `\n💰 <a href="${MISTBET_LINK}">Mostbet</a>  |  💰 <a href="${LEON_LINK}">Leon</a>`;
 }
 
 const ORD: Record<number, string> = { 1: "1ª", 2: "2ª", 3: "3ª" };
@@ -43,8 +43,9 @@ type State = {
   lastProcessedSpinId: string | null;
   // active bet
   betColumn: 0 | 1 | 2 | 3; // locked column we bet AGAINST
-  gale: number; // 0 = entrada, 1..3 = gales
+  gale: number; // 0 = entrada, 1..2 = gales
   betActive: boolean;
+  skipNextEntryAfterLoss: boolean;
   // daily stats
   day: string;
   wins: number;
@@ -59,6 +60,7 @@ const defaultState: State = {
   betColumn: 0,
   gale: 0,
   betActive: false,
+  skipNextEntryAfterLoss: false,
   day: "",
   wins: 0,
   losses: 0,
@@ -78,7 +80,11 @@ function lisbon() {
 
 async function loadState(): Promise<State> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { data } = await supabaseAdmin.from("alert_state").select("value").eq("id", STATE_KEY).maybeSingle();
+  const { data } = await supabaseAdmin
+    .from("alert_state")
+    .select("value")
+    .eq("id", STATE_KEY)
+    .maybeSingle();
   if (!data?.value) return { ...defaultState };
   try {
     return { ...defaultState, ...JSON.parse(data.value) } as State;
@@ -136,7 +142,11 @@ async function flushTelegramOutbox(limit = 6) {
       });
       await supabaseAdmin
         .from("telegram_alert_outbox")
-        .update({ delivered_at: new Date().toISOString(), attempts: item.attempts + 1, last_error: null })
+        .update({
+          delivered_at: new Date().toISOString(),
+          attempts: item.attempts + 1,
+          last_error: null,
+        })
         .eq("event_key", item.event_key)
         .eq("chat_id", item.chat_id);
       console.info(`telegram alert delivered event=${item.event_key} chat=${item.chat_id}`);
@@ -151,7 +161,10 @@ async function flushTelegramOutbox(limit = 6) {
         })
         .eq("event_key", item.event_key)
         .eq("chat_id", item.chat_id);
-      console.error(`telegram delivery deferred event=${item.event_key} retry=${retrySeconds}s`, err);
+      console.error(
+        `telegram delivery deferred event=${item.event_key} retry=${retrySeconds}s`,
+        err,
+      );
       if (err instanceof TelegramRateLimitError) break;
     }
   }
@@ -172,9 +185,7 @@ function scoreboard(state: State) {
 function analyzingMessage() {
   const { hora } = lisbon();
   return (
-    `🕵️ <b>ANALISANDO O PRÓXIMO SINAL, FIQUE ATENTO</b> 🧠💸\n` +
-    `🕒 ${hora}` +
-    affiliateLinks()
+    `🕵️ <b>ANALISANDO O PRÓXIMO SINAL, FIQUE ATENTO</b> 🧠💸\n` + `🕒 ${hora}` + affiliateLinks()
   );
 }
 
@@ -192,7 +203,12 @@ function streakAt(spins: Spin[], index: number) {
   return { column, count };
 }
 
-async function processSpin(spins: Spin[], index: number, state: State, deliver: boolean): Promise<string> {
+async function processSpin(
+  spins: Spin[],
+  index: number,
+  state: State,
+  deliver: boolean,
+): Promise<string> {
   const spin = spins[index];
   if (!spin) return "idle";
   const streak = streakAt(spins, index);
@@ -213,27 +229,32 @@ async function processSpin(spins: Spin[], index: number, state: State, deliver: 
       state.last2AlertedSpinId = spin.id;
       state.last3AlertedSpinId = spin.id;
       console.info(`roulette signal WIN number=${spin.number}`);
-      if (deliver) await broadcast(`${spin.id}:win`,
-        `✅✅✅ <b>WIN (${spin.number})</b> ✅✅✅` + affiliateLinks()
-      );
+      if (deliver)
+        await broadcast(
+          `${spin.id}:win`,
+          `✅✅✅ <b>WIN (${spin.number})</b> ✅✅✅` + affiliateLinks(),
+        );
       if (deliver) await broadcast(`${spin.id}:scoreboard`, scoreboard(state));
       if (deliver) await broadcast(`${spin.id}:analyzing`, analyzingMessage());
       await saveState(state);
       return "win";
     }
 
-    if (state.gale < 3) {
+    if (state.gale < MAX_GALES) {
       state.gale += 1;
       await safeSim(() => sim.onGale(state.gale));
-      const label = state.gale === 3 ? "PREPARE O 3 GALE — ÚLTIMO" : `PREPARE O ${state.gale} GALE`;
+      const label =
+        state.gale === MAX_GALES ? "PREPARE O 2 GALE — ÚLTIMO" : `PREPARE O ${state.gale} GALE`;
       console.info(`roulette signal gale=${state.gale} number=${spin.number}`);
-      if (deliver) await broadcast(`${spin.id}:gale:${state.gale}`,
-        `⚠️ <b>${label}</b>\n` +
-          `🎡 <b>ENTRAR ${otherColumnsOrd(state.betColumn)} COLUNA</b>\n` +
-          `🎯 <b>COBRIR O ZERO (🟢)</b>\n` +
-          `🕒 ${hora}` +
-          affiliateLinks()
-      );
+      if (deliver)
+        await broadcast(
+          `${spin.id}:gale:${state.gale}`,
+          `⚠️ <b>${label}</b>\n` +
+            `🎡 <b>ENTRAR ${otherColumnsOrd(state.betColumn)} COLUNA</b>\n` +
+            `🎯 <b>COBRIR O ZERO (🟢)</b>\n` +
+            `🕒 ${hora}` +
+            affiliateLinks(),
+        );
       await saveState(state);
       return `gale_${state.gale}`;
     }
@@ -243,37 +264,61 @@ async function processSpin(spins: Spin[], index: number, state: State, deliver: 
     state.winStreak = 0;
     state.betActive = false;
     state.gale = 0;
+    state.skipNextEntryAfterLoss = true;
     state.last2AlertedSpinId = spin.id;
     state.last3AlertedSpinId = spin.id;
     console.info(`roulette signal LOSS number=${spin.number}`);
-    if (deliver) await broadcast(`${spin.id}:loss`,
-      `🔴🔴🔴 <b>LOSS (${spin.number})</b> 🔴🔴🔴\n` +
-        `Vamos esperar outra sequência e apostar com juízo....` +
-        affiliateLinks()
-    );
+    if (deliver)
+      await broadcast(
+        `${spin.id}:loss`,
+        `🔴🔴🔴 <b>LOSS (${spin.number})</b> 🔴🔴🔴\n` +
+          `Vamos esperar outra sequência e apostar com juízo....` +
+          affiliateLinks(),
+      );
     if (deliver) await broadcast(`${spin.id}:scoreboard`, scoreboard(state));
     if (deliver) await broadcast(`${spin.id}:analyzing`, analyzingMessage());
     await saveState(state);
     return "loss";
   }
 
-  // ---- 2 seguidos → ENTRADA CONFIRMADA ----
-  if (streak.count >= 2 && spin.id !== state.last2AlertedSpinId) {
-    await safeSim(() => sim.onEntry());
-    console.info(`roulette signal entry column=${streak.column} count=${streak.count} number=${spin.number}`);
-    if (deliver) await broadcast(`${spin.id}:entry`,
-      `🚨 <b>ENTRADA CONFIRMADA</b>\n` +
-        `🎡 <b>ENTRAR ${otherColumnsOrd(streak.column)} COLUNA</b>\n` +
-        `🎯 <b>COBRIR O ZERO (🟢)</b>\n` +
-        `🕒 ${hora}` +
-        affiliateLinks()
+  // ---- 3 seguidos → aplicar filtros e, se passar, confirmar entrada ----
+  if (streak.count === ENTRY_STREAK && spin.id !== state.last3AlertedSpinId) {
+    const filterReason = entryFilterReason(
+      spins,
+      index,
+      streak.count,
+      state.skipNextEntryAfterLoss,
     );
-    state.betActive = true;
-    state.betColumn = streak.column;
-    state.gale = 0;
+
     state.last3AlertedSpinId = spin.id;
     state.last2AlertedSpinId = spin.id;
     state.lastProcessedSpinId = spin.id;
+
+    if (filterReason) {
+      if (filterReason === "after_loss") state.skipNextEntryAfterLoss = false;
+      await saveState(state);
+      console.info(
+        `roulette entry filtered reason=${filterReason} column=${streak.column} number=${spin.number}`,
+      );
+      return `filtered_${filterReason}`;
+    }
+
+    await safeSim(() => sim.onEntry());
+    console.info(
+      `roulette signal entry column=${streak.column} count=${streak.count} number=${spin.number}`,
+    );
+    if (deliver)
+      await broadcast(
+        `${spin.id}:entry`,
+        `🚨 <b>ENTRADA CONFIRMADA</b>\n` +
+          `🎡 <b>ENTRAR ${otherColumnsOrd(streak.column)} COLUNA</b>\n` +
+          `🎯 <b>COBRIR O ZERO (🟢)</b>\n` +
+          `🕒 ${hora}` +
+          affiliateLinks(),
+      );
+    state.betActive = true;
+    state.betColumn = streak.column;
+    state.gale = 0;
     await saveState(state);
     return "entered_game";
   }
@@ -306,6 +351,7 @@ async function runOnce(): Promise<{ status: string; count: number }> {
     state.wins = 0;
     state.losses = 0;
     state.winStreak = 0;
+    state.skipNextEntryAfterLoss = false;
   }
 
   // Simulação paralela: fecha sessões terminadas sem enviar mensagens ao Telegram.
@@ -326,7 +372,10 @@ async function runOnce(): Promise<{ status: string; count: number }> {
   }
 
   if (previousIndex === 0) {
-    return { status: state.betActive ? "bet_wait" : "idle", count: state.betActive ? state.gale : streak.count };
+    return {
+      status: state.betActive ? "bet_wait" : "idle",
+      count: state.betActive ? state.gale : streak.count,
+    };
   }
 
   const statuses: string[] = [];
@@ -348,7 +397,11 @@ function wait(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-async function runContinuous(): Promise<{ checks: number; statuses: Record<string, number>; count: number }> {
+async function runContinuous(): Promise<{
+  checks: number;
+  statuses: Record<string, number>;
+  count: number;
+}> {
   const deadline = Date.now() + MONITOR_WINDOW_MS;
   const statuses: Record<string, number> = {};
   let checks = 0;

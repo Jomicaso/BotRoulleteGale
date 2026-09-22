@@ -8,6 +8,22 @@ export type Spin = {
 export const SPINS_API =
   "https://api-cs.casino.org/svc-evolution-game-events/api/xxxtremelightningroulette?page=0&size=40&sort=data.settledAt,desc&duration=6";
 
+export const ENTRY_STREAK = 3;
+export const MAX_GALES = 2;
+
+export type EntryFilterReason = "not_ready" | "after_zero" | "after_loss" | null;
+
+export function entryFilterReason(
+  spins: Array<Pick<Spin, "number">>,
+  index: number,
+  streakCount: number,
+  skipAfterLoss: boolean,
+): EntryFilterReason {
+  if (streakCount !== ENTRY_STREAK) return "not_ready";
+  if (skipAfterLoss) return "after_loss";
+  return spins[index + ENTRY_STREAK]?.number === 0 ? "after_zero" : null;
+}
+
 export function columnOf(n: number): 0 | 1 | 2 | 3 {
   if (n === 0) return 0;
   const r = n % 3;
@@ -74,7 +90,11 @@ export async function fetchSpins(): Promise<Spin[]> {
 }
 
 /** spins must be newest-first. Returns the current run of the same column. */
-export function currentStreak(spins: Spin[]): { column: 0 | 1 | 2 | 3; count: number; numbers: number[] } {
+export function currentStreak(spins: Spin[]): {
+  column: 0 | 1 | 2 | 3;
+  count: number;
+  numbers: number[];
+} {
   if (spins.length === 0) return { column: 0, count: 0, numbers: [] };
   const column = columnOf(spins[0]!.number);
   if (column === 0) return { column: 0, count: 0, numbers: [] };

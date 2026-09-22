@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getSpins, type Spin } from "@/lib/spins.functions";
 import { getSimulation, type SimSession } from "@/lib/simulation.functions";
+import { entryFilterReason } from "@/lib/roulette";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -11,12 +12,12 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Monitor ao vivo da XXXtreme Lightning Roulette com alerta imediato quando saem 2 números seguidos na mesma coluna.",
+          "Monitor ao vivo da XXXtreme Lightning Roulette com alerta quando saem 3 números seguidos na mesma coluna.",
       },
       { property: "og:title", content: "Alerta Colunas | XXXtreme Lightning Roulette" },
       {
         property: "og:description",
-        content: "Alerta rápido de 2 números seguidos na mesma coluna, ao vivo.",
+        content: "Alerta de 3 números seguidos na mesma coluna, ao vivo.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -67,7 +68,14 @@ function beep() {
   }
 }
 
-type AlertItem = { id: string; column: number; count: number; numbers: number[]; at: string; label: string };
+type AlertItem = {
+  id: string;
+  column: number;
+  count: number;
+  numbers: number[];
+  at: string;
+  label: string;
+};
 
 const SESSION_LABEL: Record<string, string> = {
   s1: "00:00 → 08:00",
@@ -165,14 +173,18 @@ function Index() {
 
         const { column, count } = streakFrom(data);
         const head = data[0];
-        if (head && column !== 0 && count >= 2 && lastAlertId.current !== head.id) {
+        const filterReason = entryFilterReason(data, 0, count, false);
+        if (head && column !== 0 && filterReason === null && lastAlertId.current !== head.id) {
           lastAlertId.current = head.id;
           const label = "Entrada confirmada — entre nas outras duas colunas!!";
           const item: AlertItem = {
             id: head.id,
             column,
             count,
-            numbers: data.slice(0, count).map((s) => s.number).reverse(),
+            numbers: data
+              .slice(0, count)
+              .map((s) => s.number)
+              .reverse(),
             at: new Date().toLocaleTimeString("pt-PT"),
             label,
           };
@@ -198,28 +210,26 @@ function Index() {
   }, [fetchSpins, soundOn]);
 
   const { column, count } = streakFrom(spins);
-  const active = column !== 0 && count >= 2;
+  const active = column !== 0 && entryFilterReason(spins, 0, count, false) === null;
 
   return (
     <main className="min-h-screen bg-background px-4 py-6 text-foreground">
       {banner && (
         <div className="fixed inset-x-0 top-0 z-50 px-3 pt-3">
           <div
-            className={`mx-auto w-full max-w-2xl animate-pulse rounded-xl border-2 p-4 shadow-2xl ${
-              "border-primary bg-primary text-primary-foreground"
-            }`}
+            className={`mx-auto w-full max-w-2xl animate-pulse rounded-xl border-2 p-4 shadow-2xl ${"border-primary bg-primary text-primary-foreground"}`}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.2em]">
-                  Entrada detetada
-                </p>
+                <p className="text-xs font-bold uppercase tracking-[0.2em]">Entrada detetada</p>
                 <p className="mt-1 text-3xl font-black leading-none">{banner.label}</p>
                 <p className="mt-2 text-sm font-semibold">
                   Coluna {banner.column} · {banner.count} seguidos · {banner.at}
                 </p>
                 <p className="mt-1 text-sm opacity-90">{banner.numbers.join(" · ")}</p>
-                <p className="mt-1 text-xs font-bold opacity-90">Entrar nas outras duas colunas · Gale só três x</p>
+                <p className="mt-1 text-xs font-bold opacity-90">
+                  Entrar nas outras duas colunas · Máximo de 2 gales
+                </p>
               </div>
               <button
                 onClick={() => setBanner(null)}
@@ -239,13 +249,16 @@ function Index() {
             XXXtreme Lightning Roulette — Alerta de Colunas
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Entrada quando saem 2 números seguidos na mesma coluna, jogando nas outras duas colunas.
-            Gale só três x. Atualiza a cada 2 segundos.
+            Entrada quando saem 3 números seguidos na mesma coluna, jogando nas outras duas colunas.
+            Sem entrada após zero, primeiro sinal após red ignorado e máximo de 2 gales. Atualiza a
+            cada 2 segundos.
           </p>
         </header>
 
         <section className="mb-5 rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold text-primary">Avisos no Telegram (24h, app fechada)</h2>
+          <h2 className="text-sm font-semibold text-primary">
+            Avisos no Telegram (24h, app fechada)
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Abra o Telegram, procure{" "}
             <a
@@ -256,8 +269,8 @@ function Index() {
             >
               @RouletteGaleXxx_bot
             </a>{" "}
-            e envie <strong>/start</strong>. A partir daí recebe lá cada aviso, mesmo com esta página
-            fechada. Envie <strong>/stop</strong> para desligar.
+            e envie <strong>/start</strong>. A partir daí recebe lá cada aviso, mesmo com esta
+            página fechada. Envie <strong>/stop</strong> para desligar.
           </p>
         </section>
 
@@ -276,7 +289,7 @@ function Index() {
               <p className="mt-1 text-3xl font-black">
                 {count} seguidos na coluna {column}
               </p>
-              <p className="mt-2 text-xs font-bold opacity-90">Gale só três x</p>
+              <p className="mt-2 text-xs font-bold opacity-90">Máximo de 2 gales</p>
             </>
           ) : (
             <>
@@ -354,9 +367,7 @@ function Index() {
                 <li
                   key={a.id}
                   className={`rounded-lg border px-3 py-2 text-sm ${
-                    a.count >= 4
-                      ? "border-primary bg-card"
-                      : "border-yellow-500/50 bg-card"
+                    a.count >= 4 ? "border-primary bg-card" : "border-yellow-500/50 bg-card"
                   }`}
                 >
                   <span className="font-bold text-primary">{a.label}</span> · Coluna {a.column} ·{" "}

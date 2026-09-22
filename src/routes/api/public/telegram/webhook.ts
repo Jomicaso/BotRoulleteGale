@@ -28,20 +28,38 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
           telegramWebhookSecret: Boolean(process.env["TELEGRAM_WEBHOOK_SECRET"]),
         };
 
-        let database: "ready" | "not_configured" | "schema_missing" | "unavailable" = "not_configured";
-        let databaseReason: "none" | "invalid_credentials" | "permission_denied" | "schema_missing" | "request_failed" = "none";
+        let database: "ready" | "not_configured" | "schema_missing" | "unavailable" =
+          "not_configured";
+        let databaseReason:
+          | "none"
+          | "invalid_credentials"
+          | "permission_denied"
+          | "schema_missing"
+          | "request_failed" = "none";
         if (configuration.supabaseUrl && configuration.supabaseServiceRole) {
           try {
             const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-            const { error } = await supabaseAdmin.from("telegram_subscribers").select("chat_id").limit(1);
+            const { error } = await supabaseAdmin
+              .from("telegram_subscribers")
+              .select("chat_id")
+              .limit(1);
             if (!error) {
               database = "ready";
             } else {
-              const signature = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
-              if (error.code === "42P01" || error.code === "PGRST205" || signature.includes("does not exist")) {
+              const signature =
+                `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+              if (
+                error.code === "42P01" ||
+                error.code === "PGRST205" ||
+                signature.includes("does not exist")
+              ) {
                 database = "schema_missing";
                 databaseReason = "schema_missing";
-              } else if (signature.includes("invalid api key") || signature.includes("jwt") || signature.includes("unauthorized")) {
+              } else if (
+                signature.includes("invalid api key") ||
+                signature.includes("jwt") ||
+                signature.includes("unauthorized")
+              ) {
                 database = "unavailable";
                 databaseReason = "invalid_credentials";
               } else if (signature.includes("permission denied")) {
@@ -121,8 +139,8 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
               await telegramCall("sendMessage", {
                 chat_id: chatId,
                 text:
-                  "Avisos ligados aqui. Vai receber sinal quando saírem 2 números seguidos na mesma coluna.\n\n" +
-                  "Entrada: apostar nas outras duas colunas e cobrir o zero. Gale até 3x se repetir a mesma coluna.",
+                  "Avisos ligados aqui. Vai receber sinal quando saírem 3 números seguidos na mesma coluna.\n\n" +
+                  "Filtros: sem entrada após zero e o primeiro sinal após um red é ignorado. Entrada nas outras duas colunas, cobrindo o zero, com até 2 gales.",
               });
             } catch (err) {
               console.error("welcome failed", err);
@@ -132,8 +150,13 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
         }
 
         if (text.startsWith("/stop")) {
-          await supabaseAdmin.from("telegram_subscribers").upsert({ chat_id: chatId, title, active: false });
-          await telegramCall("sendMessage", { chat_id: chatId, text: "Avisos desligados. Envie /start para voltar a receber." });
+          await supabaseAdmin
+            .from("telegram_subscribers")
+            .upsert({ chat_id: chatId, title, active: false });
+          await telegramCall("sendMessage", {
+            chat_id: chatId,
+            text: "Avisos desligados. Envie /start para voltar a receber.",
+          });
           return Response.json({ ok: true });
         }
 
@@ -141,12 +164,14 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
           return Response.json({ ok: true, ignored: true });
         }
 
-        await supabaseAdmin.from("telegram_subscribers").upsert({ chat_id: chatId, title, active: true });
+        await supabaseAdmin
+          .from("telegram_subscribers")
+          .upsert({ chat_id: chatId, title, active: true });
         await telegramCall("sendMessage", {
           chat_id: chatId,
           text:
-            "Avisos ligados! Vai receber sinal quando saírem 2 números seguidos na mesma coluna.\n\n" +
-            "Entrada: apostar nas outras duas colunas e cobrir o zero. Gale até 3x se repetir a mesma coluna.\n\n" +
+            "Avisos ligados! Vai receber sinal quando saírem 3 números seguidos na mesma coluna.\n\n" +
+            "Filtros: sem entrada após zero e o primeiro sinal após um red é ignorado. Entrada nas outras duas colunas, cobrindo o zero, com até 2 gales.\n\n" +
             "Envie /stop para desligar.",
         });
         return Response.json({ ok: true });

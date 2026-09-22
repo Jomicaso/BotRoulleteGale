@@ -10,7 +10,7 @@ export const START_BANK = 50;
 export const BASE_STAKE = 1; // total apostado na entrada, dividido pelas 2 colunas
 const COLUMNS = 2;
 
-/** Total apostado no nível de gale (0 = entrada): 1 €, 2 €, 4 €, 8 € (15 € se falhar tudo) */
+/** Total apostado no nível de gale (0 = entrada): 1 €, 2 €, 4 € (7 € se falhar tudo) */
 export function stakeAtLevel(level: number): number {
   return BASE_STAKE * Math.pow(2, level);
 }
@@ -262,7 +262,7 @@ export async function onEntry(): Promise<void> {
   await saveState(state);
 }
 
-/** O bot subiu de gale (level 1..3). */
+/** O bot subiu de gale (level 1..2). */
 export async function onGale(level: number): Promise<void> {
   const { day, session } = lisbonNow();
   const state = await loadState(day, session);
@@ -309,7 +309,7 @@ export async function onWin(level: number): Promise<void> {
   await saveState(state);
 }
 
-/** O bot registou LOSS (falhou após o 3.º gale). */
+/** O bot registou LOSS (falhou após o 2.º gale). */
 export async function onLoss(): Promise<void> {
   const { day, session } = lisbonNow();
   const state = await loadState(day, session);
