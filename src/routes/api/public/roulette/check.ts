@@ -43,7 +43,7 @@ type State = {
   lastProcessedSpinId: string | null;
   // active bet
   betColumn: 0 | 1 | 2 | 3; // locked column we bet AGAINST
-  gale: number; // 0 = entrada, 1..2 = gales
+  gale: number; // 0 = entrada, 1..3 = gales
   betActive: boolean;
   skipNextEntryAfterLoss: boolean;
   // daily stats
@@ -244,7 +244,9 @@ async function processSpin(
       state.gale += 1;
       await safeSim(() => sim.onGale(state.gale));
       const label =
-        state.gale === MAX_GALES ? "PREPARE O 2 GALE — ÚLTIMO" : `PREPARE O ${state.gale} GALE`;
+        state.gale === MAX_GALES
+          ? `PREPARE O ${MAX_GALES} GALE — ÚLTIMO`
+          : `PREPARE O ${state.gale} GALE`;
       console.info(`roulette signal gale=${state.gale} number=${spin.number}`);
       if (deliver)
         await broadcast(
@@ -281,7 +283,7 @@ async function processSpin(
     return "loss";
   }
 
-  // ---- 3 seguidos → aplicar filtros e, se passar, confirmar entrada ----
+  // ---- 2 seguidos → aplicar filtros e, se passar, confirmar entrada ----
   if (streak.count === ENTRY_STREAK && spin.id !== state.last3AlertedSpinId) {
     const filterReason = entryFilterReason(
       spins,

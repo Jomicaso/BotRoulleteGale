@@ -8,8 +8,8 @@ export type Spin = {
 export const SPINS_API =
   "https://api-cs.casino.org/svc-evolution-game-events/api/xxxtremelightningroulette?page=0&size=40&sort=data.settledAt,desc&duration=6";
 
-export const ENTRY_STREAK = 3;
-export const MAX_GALES = 2;
+export const ENTRY_STREAK = 2;
+export const MAX_GALES = 3;
 
 export type EntryFilterReason = "not_ready" | "after_zero" | "after_loss" | null;
 

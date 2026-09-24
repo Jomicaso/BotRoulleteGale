@@ -139,8 +139,8 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
               await telegramCall("sendMessage", {
                 chat_id: chatId,
                 text:
-                  "Avisos ligados aqui. Vai receber sinal quando saírem 3 números seguidos na mesma coluna.\n\n" +
-                  "Filtros: sem entrada após zero e o primeiro sinal após um red é ignorado. Entrada nas outras duas colunas, cobrindo o zero, com até 2 gales.",
+                  "Avisos ligados aqui. Vai receber sinal quando saírem 2 números seguidos na mesma coluna.\n\n" +
+                  "Filtros: sem entrada após zero e o primeiro sinal após um red é ignorado. Entrada nas outras duas colunas, cobrindo o zero, com até 3 gales.",
               });
             } catch (err) {
               console.error("welcome failed", err);
@@ -170,8 +170,8 @@ export const Route = createFileRoute("/api/public/telegram/webhook")({
         await telegramCall("sendMessage", {
           chat_id: chatId,
           text:
-            "Avisos ligados! Vai receber sinal quando saírem 3 números seguidos na mesma coluna.\n\n" +
-            "Filtros: sem entrada após zero e o primeiro sinal após um red é ignorado. Entrada nas outras duas colunas, cobrindo o zero, com até 2 gales.\n\n" +
+            "Avisos ligados! Vai receber sinal quando saírem 2 números seguidos na mesma coluna.\n\n" +
+            "Filtros: sem entrada após zero e o primeiro sinal após um red é ignorado. Entrada nas outras duas colunas, cobrindo o zero, com até 3 gales.\n\n" +
             "Envie /stop para desligar.",
         });
         return Response.json({ ok: true });

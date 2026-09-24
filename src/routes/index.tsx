@@ -12,12 +12,12 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Monitor ao vivo da XXXtreme Lightning Roulette com alerta quando saem 3 números seguidos na mesma coluna.",
+          "Monitor ao vivo da XXXtreme Lightning Roulette com alerta quando saem 2 números seguidos na mesma coluna.",
       },
       { property: "og:title", content: "Alerta Colunas | XXXtreme Lightning Roulette" },
       {
         property: "og:description",
-        content: "Alerta de 3 números seguidos na mesma coluna, ao vivo.",
+        content: "Alerta de 2 números seguidos na mesma coluna, ao vivo.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -228,7 +228,7 @@ function Index() {
                 </p>
                 <p className="mt-1 text-sm opacity-90">{banner.numbers.join(" · ")}</p>
                 <p className="mt-1 text-xs font-bold opacity-90">
-                  Entrar nas outras duas colunas · Máximo de 2 gales
+                  Entrar nas outras duas colunas · Máximo de 3 gales
                 </p>
               </div>
               <button
@@ -249,8 +249,8 @@ function Index() {
             XXXtreme Lightning Roulette — Alerta de Colunas
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Entrada quando saem 3 números seguidos na mesma coluna, jogando nas outras duas colunas.
-            Sem entrada após zero, primeiro sinal após red ignorado e máximo de 2 gales. Atualiza a
+            Entrada quando saem 2 números seguidos na mesma coluna, jogando nas outras duas colunas.
+            Sem entrada após zero, primeiro sinal após red ignorado e máximo de 3 gales. Atualiza a
             cada 2 segundos.
           </p>
         </header>
@@ -289,7 +289,7 @@ function Index() {
               <p className="mt-1 text-3xl font-black">
                 {count} seguidos na coluna {column}
               </p>
-              <p className="mt-2 text-xs font-bold opacity-90">Máximo de 2 gales</p>
+              <p className="mt-2 text-xs font-bold opacity-90">Máximo de 3 gales</p>
             </>
           ) : (
             <>
